@@ -17,7 +17,10 @@
   #hud .dot{width:13px;height:13px;border-radius:50%;border:2px solid var(--ink)}
   #hud .num{font-size:30px;min-width:14px;text-align:center}
   #hud .draws{font-weight:500;font-size:21px;opacity:.65}
-  #hint{position:fixed;bottom:8px;right:14px;font-size:19px;opacity:.6;white-space:nowrap;pointer-events:none}
+  #li{position:fixed;bottom:18px;right:18px;display:flex;align-items:center;gap:8px;padding:3px 14px 3px 6px;color:var(--ink);text-decoration:none;font-size:23px;font-weight:700;transform:rotate(-1.5deg);box-shadow:3px 3px 0 var(--ink);transition:transform .15s}
+  #li .in{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:2.5px solid var(--ink);border-radius:7px 9px 6px 10px;font-weight:700;font-size:24px;line-height:1;padding-bottom:3px;box-sizing:border-box}
+  #li:hover{transform:rotate(1deg) scale(1.06)}
+  #li:active{box-shadow:1px 1px 0 var(--ink)}
   #status{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) rotate(-.6deg);padding:4px 20px;font-size:25px;font-weight:700;pointer-events:none;white-space:nowrap}
   #status.accent{background:var(--ink);color:var(--paper)}
   #bubble{position:fixed;left:0;top:0;transform:translate(-50%,-100%);padding:4px 16px;font-size:25px;font-weight:700;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
@@ -33,7 +36,7 @@
   #streak .sub{font-size:17px;font-weight:600;opacity:.6;line-height:1.15}
   #streak.hit{animation:hit .6s}
   @keyframes hit{0%{transform:rotate(.8deg)}20%{transform:rotate(-6deg) scale(1.08)}45%{transform:rotate(5deg) scale(1.05)}70%{transform:rotate(-2deg)}100%{transform:rotate(.8deg)}}
-  @media (max-width:760px){#title{font-size:30px;top:auto;bottom:66px}#hint{display:none}#streak{top:62px;right:auto;left:16px;min-width:0;padding:4px 14px}#streak .time{font-size:30px}}
+  @media (max-width:760px){#title{font-size:30px;top:auto;bottom:66px}#li .t{display:none}#li{padding:3px 6px}#streak{top:62px;right:auto;left:16px;min-width:0;padding:4px 14px}#streak .time{font-size:30px}}
 </style>
 <!-- Yandex.Metrika counter -->
 <script type="text/javascript">
@@ -61,7 +64,7 @@
   <div class="sc"><span class="num" id="sB">0</span> макс <span class="dot" style="background:#16171c"></span></div>
   <span class="draws">ничьих: <span id="sD">0</span></span>
 </div>
-<div id="hint">тяни мышкой — крути камеру · колёсико — ближе</div>
+<a id="li" class="sketch" href="https://www.linkedin.com/in/maxmax1" target="_blank" rel="noopener" title="Макс в LinkedIn"><span class="in">in</span><span class="t">linkedin</span></a>
 <div id="bubble" class="sketch"></div>
 <button id="again" class="sketch">ещё партию ↻</button>
 <div id="status" class="sketch">твой ход — кликни по клетке</div>
@@ -269,7 +272,7 @@ const boardTex = canvasTex(512, 512, (ctx, w, h) => {
     }
   }
 });
-const bSide = M(0.85);
+const bSide = new THREE.MeshBasicMaterial({ color: 0x141418 });   // сплошной чёрный торец, чтобы доска выделялась
 add(new THREE.BoxGeometry(0.44, BTH, 0.44), [bSide, bSide, M(1.0, { map: boardTex.tex }), bSide, bSide, bSide], [0, S + BTH / 2, BOARD_Z]);
 const cellPos = (i, lift = 0) => V((i % 3 - 1) * CELL, B + 0.0216 + lift, BOARD_Z + (Math.floor(i / 3) - 1) * CELL);
 
@@ -780,10 +783,20 @@ function botUpdate(dt, t) {
 
   // 2) цели по фазам
   const tA = V(), tB = V();
+  let restB = false;
   let wA = 0, wB = 0, look = null, lookW = 0, leanT = 0, slideT = 0, k = 9;
   const UP = V(0, 1, 0);
   yawTgt = CHAR.yaw;
-  const deskRest = () => { const a = bones.RightUpLeg.getWorldPosition(V()), k2 = bones.RightLeg.getWorldPosition(V()); return a.lerp(k2, 0.62).add(V(0, 0.075, 0)); };   // ладонь на бедре
+  const deskRest = (sh = shR) => {   // опирается ладонью о стол перед плечом (или о корпус ноутбука, если он там)
+    const p = sh.clone().add(charFwd.clone().multiplyScalar(0.28)).add(charRight.clone().multiplyScalar(-0.06));
+    const lp = laptop.worldToLocal(p.clone());
+    let y = S + 0.035;
+    if (Math.abs(lp.x) < 0.19 && lp.z > -0.135 && lp.z < 0.135) {
+      y = S + 0.019 + 0.035;
+      if (lp.z < -0.05) { lp.z = -0.05; p.copy(laptop.localToWorld(lp)); }
+    }
+    p.y = y; return p;
+  };
   switch (bot.phase) {
     case 'type':
       if (game.state === 'user' || game.state === 'over') {
@@ -801,13 +814,13 @@ function botUpdate(dt, t) {
       break;
     case 'toBowl': case 'grab':
       wA = 1; tA.copy(blackBowl.position).add(V(0, bot.phase === 'grab' ? 0.075 : 0.15, 0));
-      wB = 1; tB.copy(deskRest());
+      wB = 1; restB = true;
       look = blackBowl.position.clone(); lookW = 0.6; leanT = 0.4; slideT = 0.12; k = 6;
       yawTgt = yawTo(blackBowl.position) - 0.28;
       break;
     case 'toCell': case 'drop':
       wA = 1; tA.copy(cellPos(bot.cell, bot.phase === 'drop' ? 0.07 : 0.12));
-      wB = 1; tB.copy(deskRest());
+      wB = 1; restB = true;
       look = cellPos(bot.cell); lookW = 0.6; leanT = 0.66; slideT = 0.3; k = 6;
       yawTgt = yawTo(cellPos(bot.cell)) - 0.28;
       break;
@@ -832,6 +845,7 @@ function botUpdate(dt, t) {
   // 3) сглаживание весов и целей
   const a = 1 - Math.exp(-dt * k), aw = 1 - Math.exp(-dt * 5);
   for (const [s, w, tg] of [[1, wA, tA], [-1, wB, tB]]) {
+    if (s < 0 && restB) continue;          // опорную руку считаем после наклона корпуса
     const arm = arms[s];
     const animHand = bones[(s > 0 ? 'Left' : 'Right') + 'Hand'].getWorldPosition(V());
     if (arm.w < 0.01 && w === 0) arm.pos.copy(animHand);
@@ -847,6 +861,13 @@ function botUpdate(dt, t) {
   remy.updateMatrixWorld(true);
   bendSpine(lean);
   twistSpine(arms[1].pos, arms[1].w * 0.35);
+  if (restB) {                               // точка опоры — от плеча уже после наклона
+    remy.updateMatrixWorld(true);
+    const target = deskRest(bones.RightArm.getWorldPosition(V()));
+    const arm = arms[-1];
+    if (arm.w < 0.01) arm.pos.copy(bones.RightHand.getWorldPosition(V()));
+    arm.pos.lerp(target, a); arm.w += (1 - arm.w) * aw;
+  }
   lookHead(lookAt, headW8);
   solveArmIK(1, arms[1].pos, arms[1].w);
   solveArmIK(-1, arms[-1].pos, arms[-1].w);
