@@ -27,12 +27,34 @@
   #again:hover{transform:translateX(-50%) rotate(1deg) scale(1.04)}
   #again:active{box-shadow:1px 1px 0 var(--ink)}
   #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:30px}
-  @media (max-width:760px){#title{font-size:34px;top:60px}#hint{display:none}}
+  #streak{position:fixed;top:14px;right:16px;transform:rotate(.8deg);padding:6px 18px 8px;text-align:center;min-width:230px;transition:transform .2s}
+  #streak .lbl{font-size:19px;font-weight:600;opacity:.75;line-height:1.1}
+  #streak .time{font-size:40px;font-weight:700;line-height:1.05;letter-spacing:.5px;font-variant-numeric:tabular-nums}
+  #streak .sub{font-size:17px;font-weight:600;opacity:.6;line-height:1.15}
+  #streak.hit{animation:hit .6s}
+  @keyframes hit{0%{transform:rotate(.8deg)}20%{transform:rotate(-6deg) scale(1.08)}45%{transform:rotate(5deg) scale(1.05)}70%{transform:rotate(-2deg)}100%{transform:rotate(.8deg)}}
+  @media (max-width:760px){#title{font-size:30px;top:auto;bottom:66px}#hint{display:none}#streak{top:62px;right:auto;left:16px;min-width:0;padding:4px 14px}#streak .time{font-size:30px}}
 </style>
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+  m[i].l=1*new Date();
+  for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+  k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+  (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+  ym(325408, "init", { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/325408" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
 </head>
 <body>
 <div id="loading">точу карандаш…</div>
 <div id="title">max@katyunin.biz</div>
+<div id="streak" class="sketch">
+  <div class="lbl">макс за компом без перерыва</div>
+  <div class="time" id="stTime">…</div>
+  <div class="sub" id="stSub">&nbsp;</div>
+</div>
 <div id="hud" class="sketch">
   <div class="sc"><span class="dot" style="background:#fbfaf7"></span>ты <span class="num" id="sW">0</span></div>
   <span>:</span>
@@ -368,21 +390,7 @@ for (let i = 0; i < 9; i++) {
   const leaf = add(new THREE.SphereGeometry(1, 14, 10), leafM, [0, hgt, 0.08], lg);
   leaf.scale.set(0.05, 0.008, 0.12); leaf.rotation.x = -0.5;
 }
-const sign = new THREE.Group(); sign.position.set(0.68, S, -0.13); sign.rotation.y = -0.55; scene.add(sign);
-const signTex = canvasTex(600, 340, (ctx, w, h) => {
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = '#141418'; ctx.textAlign = 'center';
-  ctx.font = `700 76px ${HAND}`; ctx.fillText('Сыграй со мной!', w / 2, 100);
-  ctx.strokeStyle = '#141418'; ctx.lineWidth = 3; wobblyLine(ctx, 90, 118, w - 90, 122, 2);
-  ctx.font = `700 48px ${HAND}`;
-  ctx.fillText('крестики-нолики камушками', w / 2, 188);
-  ctx.fillText('ты — белые, кликни по клетке', w / 2, 242);
-  ctx.fillText('три в ряд — победа ★', w / 2, 300);
-});
-const card = add(new THREE.BoxGeometry(0.3, 0.17, 0.004), [M(1), M(1), M(1), M(1), M(1.0, { map: signTex.tex }), M(1)], [0, 0.085, 0], sign);
-card.rotation.x = -0.22;
-add(new THREE.BoxGeometry(0.2, 0.004, 0.06), M(0.5), [0, 0.002, -0.02], sign);
-document.fonts && document.fonts.load(`700 40px Caveat`).then(() => { signTex.redraw(); sticker.redraw(); screenDirty = true; }).catch(() => {});
+document.fonts && document.fonts.load(`700 40px Caveat`).then(() => { sticker.redraw(); screenDirty = true; }).catch(() => {});
 
 /* ================= стул ================= */
 const chairM = M(0.55);
@@ -555,7 +563,70 @@ function tok(p = 1) {
   } catch (e) {}
 }
 
+/* ================= «Макс за компом без перерыва» — общая статистика (Supabase) ================= */
+// Заполни после настройки Supabase (SQL — в файле supabase.sql). Пока пусто — счётчик работает локально, в этом браузере.
+const SUPABASE_URL = '';   // напр. 'https://abcd1234.supabase.co'
+const SUPABASE_KEY = '';   // publishable / anon key (его можно показывать публично)
+const streak = { last: null, record: 0, breaks: 0, broken: false, shared: false };
+const stTime = document.getElementById('stTime'), stSub = document.getElementById('stSub'), stBox = document.getElementById('streak');
+function fmtDur(ms, short) {
+  const s = Math.max(0, Math.floor(ms / 1000)), d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
+  const p = (n) => String(n).padStart(2, '0');
+  if (short) return d ? `${d} д ${h} ч` : h ? `${h} ч ${m} мин` : `${m} мин`;
+  return (d ? `${d} д ` : '') + `${p(h)}:${p(m)}:${p(sec)}`;
+}
+function plural(n, a, b, c) { const k = n % 100, r = n % 10; return (k > 10 && k < 20) ? c : r === 1 ? a : (r > 1 && r < 5) ? b : c; }
+function renderStreak() {
+  if (streak.last == null) return;
+  const cur = Date.now() - streak.last;
+  stTime.textContent = fmtDur(cur);
+  const rec = Math.max(streak.record, cur);
+  stSub.textContent = `рекорд ${fmtDur(rec, true)} · отвлекали ${streak.breaks} ${plural(streak.breaks, 'раз', 'раза', 'раз')}`;
+}
+async function rpc(name) {
+  const headers = { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' };
+  if (SUPABASE_KEY.startsWith('eyJ')) headers.Authorization = 'Bearer ' + SUPABASE_KEY;   // старый anon-ключ
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, { method: 'POST', headers, body: '{}' });
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+function applyServer(d) {      // время сервера → часы браузера
+  const offset = Date.parse(d.now) - Date.now();
+  streak.last = Date.parse(d.last_break) - offset; streak.record = Number(d.record_ms) || 0; streak.breaks = d.breaks || 0;
+}
+function localStreak() {
+  try { const d = JSON.parse(localStorage.getItem('maxStreak') || 'null'); if (d) return d; } catch (e) {}
+  return { lastBreak: Date.now() - (2 * 3600 + 37 * 60) * 1000, record: (3 * 86400 + 5 * 3600) * 1000, breaks: 41 };   // демо
+}
+async function loadStreak() {
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    try { applyServer(await rpc('get_streak')); streak.shared = true; renderStreak(); return; } catch (e) {}
+  }
+  const d = localStreak();
+  streak.last = d.lastBreak; streak.record = d.record || 0; streak.breaks = d.breaks || 0;
+  renderStreak();
+}
+async function breakStreak() {
+  if (streak.broken || streak.last == null) return;
+  streak.broken = true;
+  const prev = Date.now() - streak.last;
+  const isRecord = prev > streak.record;
+  streak.record = Math.max(streak.record, prev); streak.breaks += 1; streak.last = Date.now();
+  stBox.classList.remove('hit'); void stBox.offsetWidth; stBox.classList.add('hit');
+  renderStreak();
+  later(0.9, () => say(isRecord ? `Рекорд — ${fmtDur(prev, true)} за компом! И тут ты.` : `Эх, ${fmtDur(prev, true)} сидел не отрываясь…`, 3.2));
+  try { window.ym && ym(325408, 'reachGoal', 'first_move'); } catch (e) {}
+  if (streak.shared) {
+    try { applyServer(await rpc('break_streak')); renderStreak(); } catch (e) {}
+  } else {
+    try { localStorage.setItem('maxStreak', JSON.stringify({ lastBreak: streak.last, record: streak.record, breaks: streak.breaks })); } catch (e) {}
+  }
+}
+loadStreak();
+setInterval(renderStreak, 1000);
+
 function userMove(i) {
+  breakStreak();
   game.state = 'anim'; game.board[i] = 'W'; userIdle = 0;
   const s = makeStone(true);
   const from = bowlTop(whiteBowl), to = cellPos(i);
@@ -589,6 +660,7 @@ function checkEnd() {
     const lineStones = game.stones.filter(s => r.line.some(i => Math.hypot(cellPos(i).x - s.position.x, cellPos(i).z - s.position.z) < 0.03));
     tween(0.6, (k) => lineStones.forEach((s, j) => { s.position.y = B + 0.0216 + Math.max(0, Math.sin(Math.PI * Math.min(1, k * 1.6 - j * 0.2))) * 0.04; }));
   }
+  try { window.ym && ym(325408, 'reachGoal', r.w === 'W' ? 'game_win' : r.w === 'B' ? 'game_lose' : 'game_draw'); } catch (e) {}
   if (r.w === 'B') { say(pick(['Ха! Моя взяла', 'Три в ряд! Ещё разок?', 'Опыт не пропьёшь']), 3.5); setStatus('макс выиграл. реванш?', true); }
   else if (r.w === 'W') { say(pick(['Ну ты даёшь! Реванш?', 'Эх… засмотрелся в ноут', 'Красиво сыграно!']), 3.5); setStatus('ты выиграл!', true); }
   else { say(pick(['Ничья. Достойно', 'Боевая ничья!', 'Силы равны']), 3.2); setStatus('ничья', true); }
